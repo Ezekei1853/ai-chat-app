@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/ai-chat-app/', // 你的仓库名，注意前后都有斜杠
   plugins: [react()],
-  base: '/ai-chat-app/'
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets'
+  }
 })
