@@ -6,8 +6,8 @@ const isDevelopment = window.location.hostname === 'localhost' ||
                      window.location.port !== '';
 
 export const API_BASE_URL: string = isDevelopment 
-  ? 'http://localhost:8787'  // 本地开发
-  : 'https://api.zcx.icu';   // 生产环境
+  ? 'http://localhost:8787/graphql'  // 本地开发
+  : 'https://api.zcx.icu/graphql';   // 生产环境
 
 // 也可以通过检查域名来判断
 export const API_BASE_URL_BY_DOMAIN: string = 
