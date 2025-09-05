@@ -53,7 +53,7 @@ const AIChat: React.FC = () => {
         await graphqlClient.healthCheck();
         
         const historyResponse: HistoryResponse = await graphqlClient.getChatHistory(settings.userId);
-        
+        console.log(historyResponse,'____historyRESONE')
         if (historyResponse.success && historyResponse.messages && historyResponse.messages.length > 0) {
           // 转换时间戳格式
           const formattedMessages = historyResponse.messages.map(msg => ({
