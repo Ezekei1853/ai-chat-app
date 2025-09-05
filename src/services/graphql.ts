@@ -120,7 +120,7 @@ class GraphQLClient {
       query,
       variables,
     });
-
+    console.log(response,'______responseeeeee')
     return response.sendMessage;
   }
 
