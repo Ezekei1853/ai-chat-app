@@ -86,7 +86,7 @@ const AIChat: React.FC = () => {
       setConnectionError(null);
       
       const response: ChatResponse = await graphqlClient.sendMessage(userMessage, settings.userId);
-      
+      console.log(response,'__')
       if (response.success && response.message) {
         return {
           ...response.message,
