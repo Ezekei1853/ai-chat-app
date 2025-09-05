@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Trash2, Settings, Moon, Sun } from 'lucide-react';
-import { graphqlClient } from '../services/api';
-import type { Message, ChatResponse, HistoryResponse } from '../services/api';
+import { graphqlClient } from '../services/graphql';
+import type { Message, ChatResponse, HistoryResponse } from '../services/graphql';
 
 interface ChatSettings {
   aiName: string;
