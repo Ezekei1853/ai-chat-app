@@ -151,6 +151,8 @@ class GraphQLClient {
       query,
       variables,
     });
+    alert(response)
+    alert(111)
     console.log(response,'___respinese')
     return response.getChatHistory;
   }
