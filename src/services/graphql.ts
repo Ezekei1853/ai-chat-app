@@ -75,7 +75,7 @@ class GraphQLClient {
       }
 
       const result: GraphQLResponse<T> = await response.json();
-
+      console.log(result,'__result')
       if (result.errors && result.errors.length > 0) {
         throw new Error(result.errors[0].message);
       }
