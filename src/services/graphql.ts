@@ -83,7 +83,7 @@ class GraphQLClient {
       if (!result.data) {
         throw new Error('No data returned from GraphQL query');
       }
-      alert(result.data,'___')
+      alert(result.data)
       return result.data;
     } catch (error) {
       console.error('GraphQL request failed:', error);
