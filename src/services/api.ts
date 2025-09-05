@@ -5,11 +5,6 @@ interface RequestOptions extends RequestInit {
   headers?: Record<string, string>;
 }
 
-interface ApiResponse<T = any> {
-  data?: T;
-  message?: string;
-  success?: boolean;
-}
 
 class ApiService {
   private baseURL: string;

@@ -25,10 +25,7 @@ interface ChatResponse {
   timestamp: string;
 }
 
-interface ApiError {
-  error: string;
-  message?: string;
-}
+
 
 const AIChat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
