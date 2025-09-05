@@ -34,7 +34,7 @@ const AIChat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: '你好！我是你的AI助手，有什么可以帮助你的吗？',
+      content: '你好！我是你的AI助手，有什么可以帮助你的吗？？',
       sender: 'ai',
       timestamp: new Date()
     }
