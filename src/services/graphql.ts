@@ -116,14 +116,12 @@ class GraphQLClient {
       },
     };
 
-    const response = await this.request<{
-      message: ChatResponse | PromiseLike<ChatResponse>; sendMessage: ChatResponse 
-}>({
+    const response = await this.request<any>({
       query,
       variables,
     });
-    console.log(response,'______responseeeeee')
-    return response.message;
+    
+    return response;
   }
 
   // 获取聊天历史
