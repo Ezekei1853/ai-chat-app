@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Trash2, Settings, Moon, Sun } from 'lucide-react';
+import ApiService from '../services/api';
 
 interface Message {
   id: string;
@@ -12,6 +13,21 @@ interface ChatSettings {
   aiName: string;
   theme: 'light' | 'dark';
   maxMessages: number;
+}
+
+interface ChatRequest {
+  message: string;
+  timestamp: string;
+}
+
+interface ChatResponse {
+  reply: string;
+  timestamp: string;
+}
+
+interface ApiError {
+  error: string;
+  message?: string;
 }
 
 const AIChat: React.FC = () => {
@@ -27,6 +43,7 @@ const AIChat: React.FC = () => {
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [settings, setSettings] = useState<ChatSettings>({
     aiName: 'AI助手',
     theme: 'light',
@@ -44,32 +61,57 @@ const AIChat: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  const generateAIResponse = (userMessage: string): string => {
-    const responses = [
-      '这是一个很有趣的问题！让我想想...',
-      '我理解你的意思，这确实值得深入思考。',
-      '根据我的理解，我认为...',
-      '这个话题很复杂，从多个角度来看...',
-      '你提出了一个很好的观点！',
-      '让我为你分析一下这个问题...',
-      '我很乐意帮助你解决这个问题。',
-      '这让我想到了一些相关的概念...'
-    ];
-    
-    if (userMessage.toLowerCase().includes('你好') || userMessage.toLowerCase().includes('hello')) {
-      return '你好！很高兴与你交流，有什么我可以帮助你的吗？';
+  // 加载历史消息
+  useEffect(() => {
+    const loadChatHistory = async () => {
+      try {
+        const history = await ApiService.get<Message[]>('/chat/history');
+        if (history && Array.isArray(history) && history.length > 0) {
+          setMessages(prev => [...prev, ...history]);
+        }
+      } catch (error) {
+        console.error('加载聊天历史失败:', error);
+        // 历史加载失败不影响正常使用，保持默认欢迎消息
+      }
+    };
+
+    loadChatHistory();
+  }, []);
+
+  // 发送消息到API
+  const sendMessageToAPI = async (userMessage: string): Promise<string> => {
+    try {
+      setConnectionError(null);
+      
+      const requestData: ChatRequest = {
+        message: userMessage,
+        timestamp: new Date().toISOString()
+      };
+
+      const response = await ApiService.post<ChatResponse>('/chat', requestData);
+      
+      if (response && response.reply) {
+        return response.reply;
+      } else {
+        throw new Error('API响应格式不正确');
+      }
+    } catch (error) {
+      console.error('API调用失败:', error);
+      
+      // 设置连接错误状态
+      if (error instanceof Error) {
+        setConnectionError(`连接失败: ${error.message}`);
+      } else {
+        setConnectionError('网络连接异常，请检查网络设置');
+      }
+      
+      // 返回错误提示消息
+      return '抱歉，我现在无法连接到服务器。请检查网络连接后重试。';
     }
-    
-    if (userMessage.toLowerCase().includes('谢谢') || userMessage.toLowerCase().includes('thank')) {
-      return '不客气！如果还有其他问题，随时告诉我。';
-    }
-    
-    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-    return `${randomResponse} 关于"${userMessage}"，我觉得这是一个值得探讨的话题。你还想了解更多具体的信息吗？`;
   };
 
   const sendMessage = async () => {
-    if (!inputMessage.trim()) return;
+    if (!inputMessage.trim() || isTyping) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -78,15 +120,18 @@ const AIChat: React.FC = () => {
       timestamp: new Date()
     };
 
+    // 立即添加用户消息到界面
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     setIsTyping(true);
 
-    // 模拟AI响应延迟
-    setTimeout(() => {
+    try {
+      // 调用真实的API
+      const aiReplyContent = await sendMessageToAPI(userMessage.content);
+      
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
-        content: generateAIResponse(userMessage.content),
+        content: aiReplyContent,
         sender: 'ai',
         timestamp: new Date()
       };
@@ -99,17 +144,38 @@ const AIChat: React.FC = () => {
         }
         return newMessages;
       });
+    } catch (error) {
+      // 如果API调用完全失败，添加一个错误消息
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: '系统暂时无法响应，请稍后重试。',
+        sender: 'ai',
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, 1000 + Math.random() * 2000);
+    }
   };
 
-  const clearChat = () => {
+  const clearChat = async () => {
+    try {
+      // 可选：调用API清除服务器端的聊天历史
+      await ApiService.delete('/chat/history');
+    } catch (error) {
+      console.error('清除服务器聊天历史失败:', error);
+      // 即使服务器清除失败，也清除本地历史
+    }
+
     setMessages([{
       id: '1',
       content: '聊天记录已清空。有什么新的问题吗？',
       sender: 'ai',
       timestamp: new Date()
     }]);
+    
+    setConnectionError(null);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -135,7 +201,7 @@ const AIChat: React.FC = () => {
 
   const isDark = settings.theme === 'dark';
 
-  // 内联样式对象
+  // 内联样式对象（保持原样）
   const styles = {
     container: {
       display: 'flex',
@@ -198,7 +264,7 @@ const AIChat: React.FC = () => {
       fontSize: '14px',
       opacity: 0.9,
       margin: '2px 0 0 0',
-      color: '#ffffff',
+      color: connectionError ? '#ff6b6b' : '#ffffff',
     },
     
     headerButtons: {
@@ -217,6 +283,15 @@ const AIChat: React.FC = () => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    
+    errorBanner: {
+      padding: '12px 28px',
+      background: 'linear-gradient(135deg, #ff6b6b 0%, #ffa8a8 100%)',
+      color: '#ffffff',
+      fontSize: '14px',
+      textAlign: 'center' as const,
+      borderBottom: '1px solid rgba(255,255,255,0.2)',
     },
     
     settingsPanel: {
@@ -416,7 +491,9 @@ const AIChat: React.FC = () => {
           </div>
           <div style={styles.headerInfo}>
             <h1 style={styles.aiName}>{settings.aiName}</h1>
-            <p style={styles.status}>在线 • 随时为您服务</p>
+            <p style={styles.status}>
+              {connectionError ? '连接异常' : '在线 • 随时为您服务'}
+            </p>
           </div>
         </div>
         
@@ -465,6 +542,13 @@ const AIChat: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Error Banner */}
+      {connectionError && (
+        <div style={styles.errorBanner}>
+          {connectionError}
+        </div>
+      )}
 
       {/* Settings Panel */}
       {showSettings && (
@@ -571,7 +655,7 @@ const AIChat: React.FC = () => {
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="输入您的消息..."
+            placeholder={connectionError ? "网络连接异常..." : "输入您的消息..."}
             disabled={isTyping}
             style={styles.chatInput}
             onFocus={(e) => {
