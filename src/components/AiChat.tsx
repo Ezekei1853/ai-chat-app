@@ -1,39 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Trash2, Settings, Moon, Sun } from 'lucide-react';
-import ApiService from '../services/api';
-
-interface Message {
-  id: string;
-  content: string;
-  sender: 'user' | 'ai';
-  timestamp: Date;
-}
+import { graphqlClient } from '../services/api';
+import type { Message, ChatResponse, HistoryResponse } from '../services/api';
 
 interface ChatSettings {
   aiName: string;
   theme: 'light' | 'dark';
   maxMessages: number;
+  userId: string;
 }
-
-interface ChatRequest {
-  message: string;
-  timestamp: string;
-}
-
-interface ChatResponse {
-  reply: string;
-  timestamp: string;
-}
-
-
 
 const AIChat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: '你好！我是你的AI助手，有什么可以帮助你的吗？？',
+      content: '你好！我是你的AI助手，有什么可以帮助你的吗？',
       sender: 'ai',
-      timestamp: new Date()
+      timestamp: new Date().toISOString(),
+      model: 'deepseek-chat'
     }
   ]);
   
@@ -44,7 +28,8 @@ const AIChat: React.FC = () => {
   const [settings, setSettings] = useState<ChatSettings>({
     aiName: 'AI助手',
     theme: 'light',
-    maxMessages: 50
+    maxMessages: 50,
+    userId: 'anonymous'
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -62,38 +47,56 @@ const AIChat: React.FC = () => {
   useEffect(() => {
     const loadChatHistory = async () => {
       try {
-        const history = await ApiService.get<Message[]>('/chat/history');
-        if (history && Array.isArray(history) && history.length > 0) {
-          setMessages(prev => [...prev, ...history]);
+        setConnectionError(null);
+        
+        // 先进行健康检查
+        await graphqlClient.healthCheck();
+        
+        const historyResponse: HistoryResponse = await graphqlClient.getChatHistory(settings.userId);
+        
+        if (historyResponse.success && historyResponse.messages && historyResponse.messages.length > 0) {
+          // 转换时间戳格式
+          const formattedMessages = historyResponse.messages.map(msg => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp).toISOString()
+          }));
+          
+          setMessages(prev => {
+            // 避免重复添加欢迎消息
+            const existingWelcome = prev.find(m => m.id === '1');
+            if (existingWelcome) {
+              return [...prev.slice(1), ...formattedMessages];
+            }
+            return [...prev, ...formattedMessages];
+          });
         }
       } catch (error) {
         console.error('加载聊天历史失败:', error);
+        setConnectionError('无法连接到服务器，请检查网络连接');
         // 历史加载失败不影响正常使用，保持默认欢迎消息
       }
     };
 
     loadChatHistory();
-  }, []);
+  }, [settings.userId]);
 
-  // 发送消息到API
-  const sendMessageToAPI = async (userMessage: string): Promise<string> => {
+  // 发送消息到GraphQL API
+  const sendMessageToAPI = async (userMessage: string): Promise<Message> => {
     try {
       setConnectionError(null);
       
-      const requestData: ChatRequest = {
-        message: userMessage,
-        timestamp: new Date().toISOString()
-      };
-
-      const response = await ApiService.post<ChatResponse>('/chat', requestData);
+      const response: ChatResponse = await graphqlClient.sendMessage(userMessage, settings.userId);
       
-      if (response && response.reply) {
-        return response.reply;
+      if (response.success && response.message) {
+        return {
+          ...response.message,
+          timestamp: new Date(response.message.timestamp).toISOString()
+        };
       } else {
-        throw new Error('API响应格式不正确');
+        throw new Error(response.error || 'API响应格式不正确');
       }
     } catch (error) {
-      console.error('API调用失败:', error);
+      console.error('GraphQL API调用失败:', error);
       
       // 设置连接错误状态
       if (error instanceof Error) {
@@ -103,7 +106,13 @@ const AIChat: React.FC = () => {
       }
       
       // 返回错误提示消息
-      return '抱歉，我现在无法连接到服务器。请检查网络连接后重试。';
+      return {
+        id: Date.now().toString(),
+        content: '抱歉，我现在无法连接到服务器。请检查网络连接后重试。',
+        sender: 'ai',
+        timestamp: new Date().toISOString(),
+        model: 'error'
+      };
     }
   };
 
@@ -114,7 +123,7 @@ const AIChat: React.FC = () => {
       id: Date.now().toString(),
       content: inputMessage.trim(),
       sender: 'user',
-      timestamp: new Date()
+      timestamp: new Date().toISOString()
     };
 
     // 立即添加用户消息到界面
@@ -123,16 +132,9 @@ const AIChat: React.FC = () => {
     setIsTyping(true);
 
     try {
-      // 调用真实的API
-      const aiReplyContent = await sendMessageToAPI(userMessage.content);
+      // 调用 GraphQL API
+      const aiResponse = await sendMessageToAPI(userMessage.content);
       
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        content: aiReplyContent,
-        sender: 'ai',
-        timestamp: new Date()
-      };
-
       setMessages(prev => {
         const newMessages = [...prev, aiResponse];
         // 限制消息数量
@@ -147,7 +149,8 @@ const AIChat: React.FC = () => {
         id: (Date.now() + 1).toString(),
         content: '系统暂时无法响应，请稍后重试。',
         sender: 'ai',
-        timestamp: new Date()
+        timestamp: new Date().toISOString(),
+        model: 'error'
       };
 
       setMessages(prev => [...prev, errorMessage]);
@@ -158,8 +161,12 @@ const AIChat: React.FC = () => {
 
   const clearChat = async () => {
     try {
-      // 可选：调用API清除服务器端的聊天历史
-      await ApiService.delete('/chat/history');
+      // 调用GraphQL API清除服务器端的聊天历史
+      const deleteResponse = await graphqlClient.deleteHistory(settings.userId);
+      
+      if (!deleteResponse.success) {
+        console.warn('清除服务器聊天历史失败:', deleteResponse.message);
+      }
     } catch (error) {
       console.error('清除服务器聊天历史失败:', error);
       // 即使服务器清除失败，也清除本地历史
@@ -169,7 +176,8 @@ const AIChat: React.FC = () => {
       id: '1',
       content: '聊天记录已清空。有什么新的问题吗？',
       sender: 'ai',
-      timestamp: new Date()
+      timestamp: new Date().toISOString(),
+      model: 'deepseek-chat'
     }]);
     
     setConnectionError(null);
@@ -182,8 +190,8 @@ const AIChat: React.FC = () => {
     }
   };
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('zh-CN', { 
+  const formatTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString('zh-CN', { 
       hour: '2-digit', 
       minute: '2-digit' 
     });
@@ -198,7 +206,7 @@ const AIChat: React.FC = () => {
 
   const isDark = settings.theme === 'dark';
 
-  // 内联样式对象（保持原样）
+  // 内联样式对象
   const styles = {
     container: {
       display: 'flex',
@@ -372,7 +380,6 @@ const AIChat: React.FC = () => {
     messageContentWrapper: {
       flex: 1,
       maxWidth: '75%',
-      width:"auto",
     },
     
     messageContent: {
@@ -489,7 +496,7 @@ const AIChat: React.FC = () => {
           <div style={styles.headerInfo}>
             <h1 style={styles.aiName}>{settings.aiName}</h1>
             <p style={styles.status}>
-              {connectionError ? '连接异常' : '在线 • 随时为您服务'}
+              {connectionError ? '连接异常' : 'GraphQL API • 在线服务'}
             </p>
           </div>
         </div>
@@ -543,7 +550,7 @@ const AIChat: React.FC = () => {
       {/* Error Banner */}
       {connectionError && (
         <div style={styles.errorBanner}>
-          {connectionError}
+          GraphQL 连接错误: {connectionError}
         </div>
       )}
 
@@ -558,6 +565,24 @@ const AIChat: React.FC = () => {
                 value={settings.aiName}
                 onChange={(e) => setSettings(prev => ({ ...prev, aiName: e.target.value }))}
                 style={styles.input}
+                onFocus={(e) => {
+                  e.target.style.borderColor = '#667eea';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(102, 126, 234, 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = isDark ? '#444' : '#e2e8f0';
+                  e.target.style.boxShadow = 'none';
+                }}
+              />
+            </div>
+            <div style={styles.settingsItem}>
+              <label style={styles.label}>用户ID</label>
+              <input
+                type="text"
+                value={settings.userId}
+                onChange={(e) => setSettings(prev => ({ ...prev, userId: e.target.value }))}
+                style={styles.input}
+                placeholder="用于区分不同用户的聊天历史"
                 onFocus={(e) => {
                   e.target.style.borderColor = '#667eea';
                   e.target.style.boxShadow = '0 0 0 3px rgba(102, 126, 234, 0.1)';
@@ -620,7 +645,7 @@ const AIChat: React.FC = () => {
                 ...styles.messageTime,
                 textAlign: message.sender === 'user' ? 'right' : 'left'
               }}>
-                {formatTime(message.timestamp)}
+                {formatTime(message.timestamp)} {message.model && `• ${message.model}`}
               </div>
             </div>
           </div>
@@ -652,7 +677,7 @@ const AIChat: React.FC = () => {
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder={connectionError ? "网络连接异常..." : "输入您的消息..."}
+            placeholder={connectionError ? "GraphQL 连接异常..." : "输入您的消息 (GraphQL)..."}
             disabled={isTyping}
             style={styles.chatInput}
             onFocus={(e) => {
@@ -705,4 +730,4 @@ const AIChat: React.FC = () => {
   );
 };
 
-export default AIChat;
+export default AIChat

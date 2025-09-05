@@ -1,75 +1,264 @@
-// services/api.ts
-import { API_BASE_URL } from '../../config/api'
+// services/graphql.ts
+import { API_BASE_URL } from '../../config/api';
 
-interface RequestOptions extends RequestInit {
+interface GraphQLResponse<T = any> {
+  data?: T;
+  errors?: Array<{
+    message: string;
+    locations?: Array<{
+      line: number;
+      column: number;
+    }>;
+    path?: string[];
+  }>;
+}
+
+interface GraphQLRequestOptions {
+  query: string;
+  variables?: Record<string, any>;
   headers?: Record<string, string>;
 }
 
+interface Message {
+  id: string;
+  content: string;
+  sender: 'user' | 'ai';
+  timestamp: string;
+  model?: string;
+}
 
-class ApiService {
-  private baseURL: string;
+interface ChatResponse {
+  message: Message;
+  success: boolean;
+  error?: string;
+}
+
+interface HistoryResponse {
+  messages: Message[];
+  success: boolean;
+  error?: string;
+}
+
+interface DeleteResponse {
+  success: boolean;
+  message: string;
+  deletedCount?: string;
+}
+
+class GraphQLClient {
+  private endpoint: string;
 
   constructor() {
-    this.baseURL = API_BASE_URL;
+    this.endpoint = `${API_BASE_URL}/graphql`;
   }
 
-  async request<T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    const url = `${this.baseURL}${endpoint}`;
-    
-    const defaultOptions: RequestOptions = {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    };
+  async request<T = any>(options: GraphQLRequestOptions): Promise<T> {
+    const { query, variables = {}, headers = {} } = options;
 
-    const config: RequestOptions = {
-      ...defaultOptions,
-      ...options,
-      headers: {
-        ...defaultOptions.headers,
-        ...options.headers,
-      },
+    const requestBody = {
+      query,
+      variables,
     };
 
     try {
-      const response = await fetch(url, config);
-      
+      const response = await fetch(this.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
-      return await response.json() as T;
+
+      const result: GraphQLResponse<T> = await response.json();
+
+      if (result.errors && result.errors.length > 0) {
+        throw new Error(result.errors[0].message);
+      }
+
+      if (!result.data) {
+        throw new Error('No data returned from GraphQL query');
+      }
+
+      return result.data;
     } catch (error) {
-      console.error('API request failed:', error);
+      console.error('GraphQL request failed:', error);
       throw error;
     }
   }
 
-  // GET 请求
-  async get<T = any>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'GET' });
-  }
+  // 发送聊天消息
+  async sendMessage(message: string, userId?: string): Promise<ChatResponse> {
+    const query = `
+      mutation SendMessage($input: ChatInput!) {
+        sendMessage(input: $input) {
+          message {
+            id
+            content
+            sender
+            timestamp
+            model
+          }
+          success
+          error
+        }
+      }
+    `;
 
-  // POST 请求
-  async post<T = any>(endpoint: string, data?: any): Promise<T> {
-    return this.request<T>(endpoint, {
-      method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
+    const variables = {
+      input: {
+        message,
+        userId: userId || 'anonymous',
+      },
+    };
+
+    const response = await this.request<{ sendMessage: ChatResponse }>({
+      query,
+      variables,
     });
+
+    return response.sendMessage;
   }
 
-  // PUT 请求
-  async put<T = any>(endpoint: string, data?: any): Promise<T> {
-    return this.request<T>(endpoint, {
-      method: 'PUT',
-      body: data ? JSON.stringify(data) : undefined,
+  // 获取聊天历史
+  async getChatHistory(userId?: string): Promise<HistoryResponse> {
+    const query = `
+      query GetChatHistory($userId: String) {
+        getChatHistory(userId: $userId) {
+          messages {
+            id
+            content
+            sender
+            timestamp
+            model
+          }
+          success
+          error
+        }
+      }
+    `;
+
+    const variables = {
+      userId: userId || 'anonymous',
+    };
+
+    const response = await this.request<{ getChatHistory: HistoryResponse }>({
+      query,
+      variables,
     });
+
+    return response.getChatHistory;
   }
 
-  // DELETE 请求
-  async delete<T = any>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  // 删除聊天历史
+  async deleteHistory(userId?: string, messageId?: string): Promise<DeleteResponse> {
+    const query = `
+      mutation DeleteHistory($input: DeleteHistoryInput!) {
+        deleteHistory(input: $input) {
+          success
+          message
+          deletedCount
+        }
+      }
+    `;
+
+    const variables = {
+      input: {
+        userId: userId || 'anonymous',
+        messageId,
+      },
+    };
+
+    const response = await this.request<{ deleteHistory: DeleteResponse }>({
+      query,
+      variables,
+    });
+
+    return response.deleteHistory;
+  }
+
+  // 健康检查
+  async healthCheck(): Promise<string> {
+    const query = `
+      query Health {
+        health
+      }
+    `;
+
+    const response = await this.request<{ health: string }>({
+      query,
+    });
+
+    return response.health;
   }
 }
 
-export default new ApiService();
+// 导出单例实例
+export const graphqlClient = new GraphQLClient();
+
+// 导出类型
+export type {
+  Message,
+  ChatResponse,
+  HistoryResponse,
+  DeleteResponse,
+  GraphQLResponse,
+  GraphQLRequestOptions,
+};
+
+// 预定义的 GraphQL 查询和变更
+export const GRAPHQL_QUERIES = {
+  GET_CHAT_HISTORY: `
+    query GetChatHistory($userId: String) {
+      getChatHistory(userId: $userId) {
+        messages {
+          id
+          content
+          sender
+          timestamp
+          model
+        }
+        success
+        error
+      }
+    }
+  `,
+
+  SEND_MESSAGE: `
+    mutation SendMessage($input: ChatInput!) {
+      sendMessage(input: $input) {
+        message {
+          id
+          content
+          sender
+          timestamp
+          model
+        }
+        success
+        error
+      }
+    }
+  `,
+
+  DELETE_HISTORY: `
+    mutation DeleteHistory($input: DeleteHistoryInput!) {
+      deleteHistory(input: $input) {
+        success
+        message
+        deletedCount
+      }
+    }
+  `,
+
+  HEALTH_CHECK: `
+    query Health {
+      health
+    }
+  `,
+};
+
+export default GraphQLClient;
