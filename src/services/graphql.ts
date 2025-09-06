@@ -1,5 +1,6 @@
 // services/graphql.ts
-import { Console } from 'console';
+
+
 import { API_BASE_URL } from '../../config/api';
 
 interface GraphQLResponse<T = any> {
