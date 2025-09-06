@@ -84,7 +84,7 @@ class GraphQLClient {
       if (!result.data) {
         throw new Error('No data returned from GraphQL query');
       }
-      alert(result.data)
+   
       return result.data;
     } catch (error) {
       console.error('GraphQL request failed:', error);
@@ -127,6 +127,7 @@ class GraphQLClient {
 
   // 获取聊天历史
   async getChatHistory(userId?: string): Promise<HistoryResponse> {
+ alert(10000)
     const query = `
       query GetChatHistory($userId: String) {
         getChatHistory(userId: $userId) {
@@ -152,7 +153,7 @@ class GraphQLClient {
       variables,
     });
     alert(response)
-    alert(111)
+
     console.log(response,'___respinese')
     return response.getChatHistory;
   }
