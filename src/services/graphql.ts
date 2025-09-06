@@ -138,6 +138,7 @@ class GraphQLClient {
 
   // 获取聊天历史
   async getChatHistory(userId?: string): Promise<HistoryResponse> {
+    console.log(100000)
     const query = `
       query GetChatHistory($userId: String) {
         getChatHistory(userId: $userId) {
