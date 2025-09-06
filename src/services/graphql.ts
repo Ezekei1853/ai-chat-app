@@ -62,6 +62,8 @@ class GraphQLClient {
     };
 
     try {
+      console.log('GraphQL 请求:', { endpoint: this.endpoint, query, variables });
+      
       const response = await fetch(this.endpoint, {
         method: 'POST',
         headers: {
@@ -76,12 +78,15 @@ class GraphQLClient {
       }
 
       const result: GraphQLResponse<T> = await response.json();
-      console.log(result,'__result')
+      console.log('GraphQL 响应:', result);
+      
       if (result.errors && result.errors.length > 0) {
+        console.error('GraphQL 错误:', result.errors);
         throw new Error(result.errors[0].message);
       }
 
       if (!result.data) {
+        console.error('GraphQL 响应中没有 data 字段');
         throw new Error('No data returned from GraphQL query');
       }
    
@@ -117,17 +122,22 @@ class GraphQLClient {
       },
     };
 
-    const response = await this.request<any>({
-      query,
-      variables,
-    });
-    
-    return response;
+    try {
+      const response = await this.request<{ sendMessage: ChatResponse }>({
+        query,
+        variables,
+      });
+      
+      console.log('sendMessage 响应:', response);
+      return response.sendMessage;
+    } catch (error) {
+      console.error('sendMessage 失败:', error);
+      throw error;
+    }
   }
 
   // 获取聊天历史
   async getChatHistory(userId?: string): Promise<HistoryResponse> {
- alert(10000)
     const query = `
       query GetChatHistory($userId: String) {
         getChatHistory(userId: $userId) {
@@ -148,14 +158,39 @@ class GraphQLClient {
       userId: userId || 'anonymous',
     };
 
-    const response = await this.request<{ getChatHistory: HistoryResponse }>({
-      query,
-      variables,
-    });
-    alert(response)
+    try {
+      console.log('正在获取聊天历史，userId:', userId);
+      
+      const response = await this.request<{ getChatHistory: HistoryResponse }>({
+        query,
+        variables,
+      });
 
-    console.log(response,'___respinese')
-    return response.getChatHistory;
+      console.log('getChatHistory 原始响应:', response);
+      
+      // 检查响应结构
+      if (!response || !response.getChatHistory) {
+        console.error('响应结构异常:', response);
+        return {
+          messages: [],
+          success: false,
+          error: '响应结构异常'
+        };
+      }
+
+      const historyData = response.getChatHistory;
+      console.log('getChatHistory 解析后的数据:', historyData);
+      
+      return historyData;
+    } catch (error) {
+      console.error('getChatHistory 失败:', error);
+      // 返回一个默认的失败响应，而不是抛出错误
+      return {
+        messages: [],
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
   }
 
   // 删除聊天历史
@@ -177,12 +212,20 @@ class GraphQLClient {
       },
     };
 
-    const response = await this.request<{ deleteHistory: DeleteResponse }>({
-      query,
-      variables,
-    });
+    try {
+      const response = await this.request<{ deleteHistory: DeleteResponse }>({
+        query,
+        variables,
+      });
 
-    return response.deleteHistory;
+      return response.deleteHistory;
+    } catch (error) {
+      console.error('deleteHistory 失败:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
   }
 
   // 健康检查
@@ -193,11 +236,16 @@ class GraphQLClient {
       }
     `;
 
-    const response = await this.request<{ health: string }>({
-      query,
-    });
+    try {
+      const response = await this.request<{ health: string }>({
+        query,
+      });
 
-    return response.health;
+      return response.health;
+    } catch (error) {
+      console.error('健康检查失败:', error);
+      throw error;
+    }
   }
 }
 
