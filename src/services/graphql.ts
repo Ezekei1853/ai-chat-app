@@ -130,7 +130,7 @@ class GraphQLClient {
       });
       
       console.log('sendMessage 响应:', response);
-      return response.message;
+      return response; 
     } catch (error) {
       console.error('sendMessage 失败:', error);
       throw error;
