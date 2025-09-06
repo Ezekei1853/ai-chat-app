@@ -124,13 +124,13 @@ class GraphQLClient {
     };
 
     try {
-      const response = await this.request<{ sendMessage: ChatResponse }>({
+      const response = await this.request<any>({
         query,
         variables,
       });
       
       console.log('sendMessage 响应:', response);
-      return response.sendMessage;
+      return response.message;
     } catch (error) {
       console.error('sendMessage 失败:', error);
       throw error;
